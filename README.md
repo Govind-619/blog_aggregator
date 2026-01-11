@@ -1,45 +1,78 @@
 # Blog Aggregator (gator)
 
-A small CLI tool to aggregate RSS/Atom feeds into a Postgres-backed store.
+A small CLI tool to aggregate RSS/Atom feeds into a PostgreSQL-backed store.
+
+## Recent changes
+
+- 2026-01-11: Added this `README.md` and converted the original notes into
+	proper Markdown. Updated usage examples, migration instructions, and
+	highlighted important files.
+
 
 ## Features
+
 - Register and switch users
-- Add feeds and follow/unfollow feeds
+- Add feeds and follow / unfollow feeds
 - Periodically scrape feeds and persist posts
 - Browse recent posts for a user
 
 ## Requirements
-- Go 1.25+ (module uses `go 1.25.1`)
-- PostgreSQL database
-- `psql` (or another way to apply SQL migration files)
+
+- Go 1.25+ (the module uses `go 1.25.1`)
+- PostgreSQL
+- `psql` or another way to apply SQL migration files
 
 ## Repository layout
+
 - `main.go` — CLI entrypoint and command handlers
-- `rss.go` — feed fetching & parsing
-- `internal/config` — reads/writes `~/.gatorconfig.json`
-- `internal/database` — generated `sqlc` DB queries and models
-- `sql/schema` — SQL migration files (apply in order)
+- `rss.go` — RSS / Atom feed fetching and parsing
+- `internal/config` — reads and writes `~/.gatorconfig.json`
+- `internal/database` — generated `sqlc` database queries and models
+- `sql/schema` — SQL migration files (must be applied in order)
+
+## Installation (Production)
+
+Go programs are statically compiled binaries. Once built or installed, the `gator` CLI can be run without the Go toolchain.
+
+Install `gator` globally using `go install`:
+
+```bash
+go install github.com/Govind-619/blog_aggregator@latest
+```
+
+Ensure that `$GOPATH/bin` (or `$GOBIN`) is in your `PATH`. After installation you should be able to run:
+
+```bash
+gator
+```
 
 ## Configuration
-Create a config file at `~/.gatorconfig.json` with at least the `db_url` field. Example:
+
+Create a config file at `~/.gatorconfig.json`.
+
+Minimum required configuration:
 
 ```json
 {
-  "db_url": "postgres://user:pass@localhost:5432/gator?sslmode=disable",
-  "current_user_name": ""
+	"db_url": "postgres://user:pass@localhost:5432/gator?sslmode=disable",
+	"current_user_name": ""
 }
 ```
 
-The `register` command will set `current_user_name` when a new user is created. The CLI reads this file using the `config.Read()` helper.
+- `db_url` is required and must point to a valid PostgreSQL database
+- `current_user_name` is managed by the CLI (via `register` and `login`)
 
-## Database / Migrations
-The SQL migration files are in `sql/schema`. They create the `users`, `feeds`, `feed_follows`, and `posts` tables. Apply them in order to your database. Example using `psql`:
+The CLI reads this file using the `config.Read()` helper.
+
+## Database & Migrations
+
+SQL migration files live in `sql/schema`. They create the `users`, `feeds`, `feed_follows`, and `posts` tables.
+
+Apply migrations manually using `psql` (example):
 
 ```bash
-# export your database URL (psql connection string)
 export DATABASE_URL="postgres://user:pass@localhost:5432/gator?sslmode=disable"
 
-# apply each migration in order
 psql "$DATABASE_URL" -f sql/schema/001_users.sql
 psql "$DATABASE_URL" -f sql/schema/003_feeds.sql
 psql "$DATABASE_URL" -f sql/schema/005_feed_follows.sql
@@ -47,69 +80,116 @@ psql "$DATABASE_URL" -f sql/schema/006_add_last_fetched_at.sql
 psql "$DATABASE_URL" -f sql/schema/007_add_posts.sql
 ```
 
-Alternatively, use your preferred migration tool (goose, migrate, etc.) against the files in `sql/schema`.
+You may also use a migration tool such as `goose` or `migrate`, pointing it at `sql/schema`.
 
-## Build & Run
-To build:
+## Build & Run (Development)
+
+Run directly with the Go toolchain:
+
+```bash
+go run .
+```
+
+Build a binary:
 
 ```bash
 go build -o gator .
 ```
 
-Run commands via the binary (or `go run . <cmd>`). The CLI expects a command as the first argument. Example usage:
+The compiled `gator` binary can be run without Go installed.
+
+## CLI Usage Examples
+
+Register a user (also sets `current_user_name` in `~/.gatorconfig.json`):
 
 ```bash
-# register a user (also sets current user in ~/.gatorconfig.json)
-./gator register alice
-
-# login as an existing user
-./gator login alice
-
-# list users
-./gator users
-
-# add feed (name and url)
-./gator addfeed "Example Blog" https://example.com/feed.xml
-
-# list all feeds
-./gator feeds
-
-# follow a feed by URL
-./gator follow https://example.com/feed.xml
-
-# list follows for current user
-./gator following
-
-# unfollow by URL
-./gator unfollow https://example.com/feed.xml
-
-# start aggregator: collect feeds every 30s
-./gator agg 30s
-
-# browse recent posts for current user (limit optional)
-./gator browse 5
-
-# reset users table (DANGEROUS: deletes users)
-./gator reset
+gator register alice
 ```
 
-Notes:
-- `register` creates a user and writes the username to `~/.gatorconfig.json`.
-- `agg <duration>` runs a loop that fetches the next feed (round-robin) and stores new posts.
+Log in as an existing user:
+
+```bash
+gator login alice
+```
+
+List all users:
+
+```bash
+gator users
+```
+
+Add a feed:
+
+```bash
+gator addfeed "Example Blog" https://example.com/feed.xml
+```
+
+List all feeds:
+
+```bash
+gator feeds
+```
+
+Follow a feed by URL:
+
+```bash
+gator follow https://example.com/feed.xml
+```
+
+List feeds the current user is following:
+
+```bash
+gator following
+```
+
+Unfollow a feed:
+
+```bash
+gator unfollow https://example.com/feed.xml
+```
+
+Run the aggregator (fetch feeds every 30 seconds):
+
+```bash
+gator agg 30s
+```
+
+Browse recent posts for the current user (limit optional, default is 2):
+
+```bash
+gator browse 5
+```
+
+Reset the users table (dangerous — deletes users and cascades data):
+
+```bash
+gator reset
+```
+
+### Notes
+
+- `register` creates a user and updates `~/.gatorconfig.json`
+- `agg` runs continuously and can be stopped with `Ctrl+C`
+- `reset` is intended for development only
 
 ## Important files
-- [main.go](main.go) — CLI and command implementations
-- [rss.go](rss.go) — feed fetching
-- [internal/config/config.go](internal/config/config.go) — config file handling
-- [internal/database](internal/database) — generated sqlc queries
-- [sql/schema](sql/schema) — migration SQL files
 
-## Development
-- Codegen: `internal/database` is generated by `sqlc` (see `sql/queries` & `sql/schema`).
-- To run locally: ensure Postgres is running, apply migrations, set `~/.gatorconfig.json` `db_url`, then use `go run . <command>`.
+- `main.go` — CLI command implementations
+- `rss.go` — Feed fetching and parsing logic
+- `internal/config/config.go` — Config file handling
+- `internal/database` — Generated `sqlc` queries and models
+- `sql/schema` — SQL migration files
+
+## Development notes
+
+- Database code in `internal/database` is generated by `sqlc`
+- SQL lives in `sql/queries` and `sql/schema`
+- Ensure Postgres is running and migrations are applied before running the CLI
 
 ## Contributing
-PRs and issues welcome. If you add features, please include tests and update this README with any new configuration or runtime steps.
+
+Issues and pull requests are welcome. If you add features, please include tests and update this README with any new configuration or runtime steps.
 
 ## License
-No license file is included in this repository. Add `LICENSE` if you want to set a license.
+
+No license file is currently included in this repository. Add a `LICENSE` file if you wish to define licensing terms.
